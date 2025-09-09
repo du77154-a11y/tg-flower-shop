@@ -1,0 +1,58 @@
+[
+  {
+    "id": "bouquet_rose_classic",
+    "title": "Классический букет роз",
+    "price": 3590,
+    "currency": "RUB",
+    "image": "/web/images/rose_classic.jpg",
+    "description": "15 красных роз, лента, крафт-бумага. Идеально для признаний."
+  },
+  {
+    "id": "bouquet_mono_tulip",
+    "title": "Моно-букет тюльпанов",
+    "price": 2790,
+    "currency": "RUB",
+    "image": "/web/images/tulips.jpg",
+    "description": "21 тюльпан в сезонных оттенках. Лёгкий, свежий и весенний."
+  },
+  {
+    "id": "bouquet_mixed_pastel",
+    "title": "Пастельная нежность",
+    "price": 3990,
+    "currency": "RUB",
+    "image": "/web/images/pastel_mix.jpg",
+    "description": "Собранный микс: розы, эустома, альстромерия. Мягкие пастельные тона."
+  },
+  {
+    "id": "bouquet_sunflower_smile",
+    "title": "Подсолнуховая улыбка",
+    "price": 3290,
+    "currency": "RUB",
+    "image": "/web/images/sunflowers.jpg",
+    "description": "Подсолнухи и зелень — яркий позитивный букет, поднимает настроение."
+  },
+  {
+    "id": "box_peonies",
+    "title": "Пионы в коробке",
+    "price": 5490,
+    "currency": "RUB",
+    "image": "/web/images/peonies_box.jpg",
+    "description": "Пионовая композиция в шляпной коробке. Аромат и объём!"
+  },
+  {
+    "id": "mini_chamomile",
+    "title": "Ромашковый мини",
+    "price": 1990,
+    "currency": "RUB",
+    "image": "/web/images/chamomile.jpg",
+    "description": "Уютный букет из ромашек с лентой — тёплый комплимент."
+  },
+  {
+    "id": "bouquet_lilies_elegant",
+    "title": "Элегантные лилии",
+    "price": 4590,
+    "currency": "RUB",
+    "image": "/web/images/lilies.jpg",
+    "description": "Белые лилии с эвкалиптом. Элегантная классика в современном оформлении."
+  }
+]
