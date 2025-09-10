@@ -16,8 +16,22 @@ if (!BOT_TOKEN) {
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// Флаг: запускали ли polling (локальная разработка)
-let didLaunchPolling = false;
+// ===== DEBUG-логинг апдейтов =====
+bot.use(async (ctx, next) => {
+  try {
+    console.log('Update:', {
+      type: ctx.updateType,
+      chat: ctx.chat?.id,
+      text: ctx.message?.text,
+      hasWebAppData: !!ctx.message?.web_app_data,
+    });
+  } catch {}
+  return next();
+});
+
+bot.catch((err, ctx) => {
+  console.error('Telegraf error for update', ctx.update?.update_id, err);
+});
 
 // ===== БОТ =====
 bot.start((ctx) =>
@@ -48,6 +62,12 @@ bot.on('message', async (ctx) => {
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// HTTP-логинг (видно, что заходит Telegram)
+app.use((req, _res, next) => {
+  console.log('HTTP', req.method, req.path, 'ua=', req.headers['user-agent']);
+  next();
+});
 
 // парсим JSON ДО webhook
 app.use(express.json());
@@ -81,7 +101,7 @@ if (IS_RENDER && SERVICE_URL) {
   const hookPath = `/telegraf/${BOT_TOKEN}`;
   const hookUrl = `${SERVICE_URL}${hookPath}`;
 
-  // принимаем POST на вебхук и отвечаем 200 на GET (чтоб не было 404)
+  // принимаем POST на вебхук и отвечаем 200 на GET
   app.use(hookPath, bot.webhookCallback(hookPath));
   app.get(hookPath, (_req, res) => res.status(200).send('ok'));
 
@@ -89,9 +109,7 @@ if (IS_RENDER && SERVICE_URL) {
 
   (async () => {
     try {
-      // на всякий — сброс
       await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {});
-      // ставим хук
       await bot.telegram.setWebhook(hookUrl);
       console.log('Webhook set:', hookUrl);
     } catch (e) {
@@ -106,7 +124,6 @@ if (IS_RENDER && SERVICE_URL) {
     try {
       await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {});
       await bot.launch();
-      didLaunchPolling = true;
       console.log('Bot launched (polling)');
     } catch (e) {
       console.error(e);
@@ -114,18 +131,6 @@ if (IS_RENDER && SERVICE_URL) {
   })();
 }
 
-// Безопасное завершение: ОСТАНАВЛИВАЕМ ТОЛЬКО ЕСЛИ БЫЛ POLLING
-const safeExit = (signal) => {
-  try {
-    if (didLaunchPolling) {
-      bot.stop(signal);
-    }
-  } catch (_) {
-    // игнорируем "Bot is not running!"
-  } finally {
-    process.exit(0);
-  }
-};
-
-process.once('SIGINT', () => safeExit('SIGINT'));
-process.once('SIGTERM', () => safeExit('SIGTERM'));
+// безопасное завершение (не зовём stop в webhook-режиме)
+process.once('SIGINT', () => process.exit(0));
+process.once('SIGTERM', () => process.exit(0));
