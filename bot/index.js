@@ -16,14 +16,14 @@ if (!BOT_TOKEN) {
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// ===== DEBUG-логинг апдейтов =====
+// ===== ДЕБАГ: лог каждого апдейта из Telegraf =====
 bot.use(async (ctx, next) => {
   try {
-    console.log('Update:', {
+    console.log('Update via Telegraf:', {
       type: ctx.updateType,
-      chat: ctx.chat?.id,
       text: ctx.message?.text,
-      hasWebAppData: !!ctx.message?.web_app_data,
+      chat: ctx.chat?.id,
+      hasWebAppData: !!ctx.message?.web_app_data
     });
   } catch {}
   return next();
@@ -33,7 +33,7 @@ bot.catch((err, ctx) => {
   console.error('Telegraf error for update', ctx.update?.update_id, err);
 });
 
-// ===== БОТ =====
+// ==== Хэндлеры бота ====
 bot.start((ctx) =>
   ctx.reply(
     'Цветочная витрина готова 🌸',
@@ -41,6 +41,10 @@ bot.start((ctx) =>
   )
 );
 
+// ДЕБАГ: отвечаем на любой текст (чтобы точно увидеть реакцию)
+bot.on('text', (ctx) => ctx.reply('Принял текст: ' + (ctx.message?.text || '')));
+
+// Заявка из мини-приложения
 bot.on('message', async (ctx) => {
   const wa = ctx.message?.web_app_data;
   if (!wa?.data) return;
@@ -63,19 +67,19 @@ const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// HTTP-логинг (видно, что заходит Telegram)
+// ДЕБАГ: лог каждого HTTP-запроса
 app.use((req, _res, next) => {
   console.log('HTTP', req.method, req.path, 'ua=', req.headers['user-agent']);
   next();
 });
 
-// парсим JSON ДО webhook
-app.use(express.json());
+// ВАЖНО: парсеры до вебхука
+app.use(express.json({ type: ['application/json', 'text/plain', 'application/x-www-form-urlencoded'] }));
+app.use(express.urlencoded({ extended: true }));
 
-// статика мини-приложения
+// Статика и API
 app.use('/web', express.static(path.join(__dirname, '..', 'web')));
 
-// API товаров
 app.get('/products', (_req, res) => {
   const filePath = path.join(__dirname, '..', 'data', 'products.json');
   try {
@@ -86,23 +90,34 @@ app.get('/products', (_req, res) => {
   }
 });
 
-// health
 app.get('/', (_req, res) => res.send('Bot & Web are running'));
 
 // ===== Режимы: webhook (Render) / polling (локально) =====
 const IS_RENDER = !!process.env.RENDER || !!process.env.RENDER_EXTERNAL_URL;
-const SERVICE_URL = (
-  process.env.RENDER_EXTERNAL_URL ||
-  (process.env.WEB_APP_URL ? process.env.WEB_APP_URL.replace(/\/web$/, '') : '')
-)?.replace(/\/$/, '') || '';
+const SERVICE_BASE =
+  (process.env.RENDER_EXTERNAL_URL ||
+    (process.env.WEB_APP_URL ? process.env.WEB_APP_URL.replace(/\/web$/, '') : '') ||
+    '').replace(/\/$/, '');
 
-if (IS_RENDER && SERVICE_URL) {
+if (IS_RENDER && SERVICE_BASE) {
   // --- WEBHOOK (Render) ---
   const hookPath = `/telegraf/${BOT_TOKEN}`;
-  const hookUrl = `${SERVICE_URL}${hookPath}`;
+  const hookUrl = `${SERVICE_BASE}${hookPath}`;
 
-  // принимаем POST на вебхук и отвечаем 200 на GET
-  app.use(hookPath, bot.webhookCallback(hookPath));
+  // ЯВНЫЙ обработчик POST вебхука с логированием тела:
+  app.post(hookPath, async (req, res) => {
+    try {
+      console.log('Webhook POST body keys:', req.body ? Object.keys(req.body) : 'NO BODY');
+      // прокидываем апдейт в Telegraf
+      await bot.handleUpdate(req.body);
+      res.status(200).send('ok');
+    } catch (err) {
+      console.error('Webhook handler error:', err);
+      res.status(200).send('ok'); // отвечаем 200, чтобы Telegram не ретраил бесконечно
+    }
+  });
+
+  // Ответим 200 на GET того же пути (проверка наличия)
   app.get(hookPath, (_req, res) => res.status(200).send('ok'));
 
   app.listen(PORT, () => console.log('HTTP on', PORT));
@@ -131,6 +146,6 @@ if (IS_RENDER && SERVICE_URL) {
   })();
 }
 
-// безопасное завершение (не зовём stop в webhook-режиме)
+// Не вызываем bot.stop() в webhook-режиме
 process.once('SIGINT', () => process.exit(0));
 process.once('SIGTERM', () => process.exit(0));
