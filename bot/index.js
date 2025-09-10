@@ -16,15 +16,14 @@ if (!BOT_TOKEN) {
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// Кнопка открытия витрины
-bot.start((ctx) => {
-  return ctx.reply(
+// ======== БОТ ========
+bot.start((ctx) =>
+  ctx.reply(
     'Цветочная витрина готова 🌸',
     Markup.keyboard([[Markup.button.webApp('Открыть витрину', WEB_APP_URL)]]).resize()
-  );
-});
+  )
+);
 
-// Приём заявки из мини-приложения
 bot.on('message', async (ctx) => {
   const wa = ctx.message?.web_app_data;
   if (!wa?.data) return;
@@ -42,44 +41,43 @@ bot.on('message', async (ctx) => {
   }
 });
 
-// --- HTTP + статика + API ---
+// ======== HTTP ========
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-app.use('/web', express.static(path.join(__dirname, '..', 'web')));
+// ВАЖНО: JSON-парсер ДО webhook
+app.use(express.json());
 
+// Статика и API
+app.use('/web', express.static(path.join(__dirname, '..', 'web')));
 app.get('/products', (_req, res) => {
   const filePath = path.join(__dirname, '..', 'data', 'products.json');
   try {
     const json = fs.readFileSync(filePath, 'utf8');
     res.type('application/json').send(json);
-  } catch (e) {
+  } catch {
     res.status(500).json({ error: 'Не удалось прочитать products.json' });
   }
 });
-
 app.get('/', (_req, res) => res.send('Bot & Web are running'));
 
-// --- Режим запуска: webhook на Render, polling локально ---
+// ======== WEBHOOK на Render, POLLING локально ========
 const IS_RENDER = !!process.env.RENDER || !!process.env.RENDER_EXTERNAL_URL;
-
-// адрес сервиса (Render даёт переменную RENDER_EXTERNAL_URL)
 const SERVICE_URL =
   (process.env.RENDER_EXTERNAL_URL ||
-    (process.env.WEB_APP_URL ? process.env.WEB_APP_URL.replace(/\/web$/, '') : ''))?.replace(/\/$/, '');
+    (process.env.WEB_APP_URL ? process.env.WEB_APP_URL.replace(/\/web$/, '') : '')).replace(/\/$/, '');
 
 if (IS_RENDER && SERVICE_URL) {
   const hookPath = `/telegraf/${BOT_TOKEN}`;
   const hookUrl = `${SERVICE_URL}${hookPath}`;
 
-  // Вешаем обработчик webhook в Express
+  // Обработчик webhook (POST) и ответ на GET (чтобы не получить 404)
   app.use(hookPath, bot.webhookCallback(hookPath));
+  app.get(hookPath, (_req, res) => res.status(200).send('ok'));
 
-  // Поднимаем HTTP
   app.listen(PORT, () => console.log('HTTP on', PORT));
 
-  // Ставим вебхук и НЕ запускаем polling
   (async () => {
     try {
       await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {});
@@ -91,7 +89,6 @@ if (IS_RENDER && SERVICE_URL) {
     }
   })();
 } else {
-  // Локальная разработка — polling
   app.listen(PORT, () => console.log('HTTP on', PORT));
   (async () => {
     try {
