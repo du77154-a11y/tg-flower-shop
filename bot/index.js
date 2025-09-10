@@ -15,9 +15,11 @@ if (!BOT_TOKEN) {
 }
 
 const bot = new Telegraf(BOT_TOKEN);
-let isPolling = false; // флаг: включали ли polling (локально)
 
-// ==== БОТ ====
+// Флаг: запускали ли polling (локальная разработка)
+let didLaunchPolling = false;
+
+// ===== БОТ =====
 bot.start((ctx) =>
   ctx.reply(
     'Цветочная витрина готова 🌸',
@@ -42,17 +44,18 @@ bot.on('message', async (ctx) => {
   }
 });
 
-// ==== HTTP ====
+// ===== HTTP =====
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ВАЖНО: парсим JSON ДО вебхука
+// парсим JSON ДО webhook
 app.use(express.json());
 
-// Статика и API
+// статика мини-приложения
 app.use('/web', express.static(path.join(__dirname, '..', 'web')));
 
+// API товаров
 app.get('/products', (_req, res) => {
   const filePath = path.join(__dirname, '..', 'data', 'products.json');
   try {
@@ -63,23 +66,22 @@ app.get('/products', (_req, res) => {
   }
 });
 
+// health
 app.get('/', (_req, res) => res.send('Bot & Web are running'));
 
-// ==== Режимы: webhook на Render, polling локально ====
+// ===== Режимы: webhook (Render) / polling (локально) =====
 const IS_RENDER = !!process.env.RENDER || !!process.env.RENDER_EXTERNAL_URL;
-
-// URL сервиса: берём RENDER_EXTERNAL_URL, иначе из WEB_APP_URL (отрезаем /web)
 const SERVICE_URL = (
   process.env.RENDER_EXTERNAL_URL ||
   (process.env.WEB_APP_URL ? process.env.WEB_APP_URL.replace(/\/web$/, '') : '')
-).replace(/\/$/, '');
+)?.replace(/\/$/, '') || '';
 
 if (IS_RENDER && SERVICE_URL) {
-  // --- WEBHOOK mode (Render) ---
+  // --- WEBHOOK (Render) ---
   const hookPath = `/telegraf/${BOT_TOKEN}`;
   const hookUrl = `${SERVICE_URL}${hookPath}`;
 
-  // Принимаем POST на вебхук и даём 200 на GET (чтобы не было 404)
+  // принимаем POST на вебхук и отвечаем 200 на GET (чтоб не было 404)
   app.use(hookPath, bot.webhookCallback(hookPath));
   app.get(hookPath, (_req, res) => res.status(200).send('ok'));
 
@@ -87,8 +89,9 @@ if (IS_RENDER && SERVICE_URL) {
 
   (async () => {
     try {
-      // Чистим старый хук и ставим новый
+      // на всякий — сброс
       await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {});
+      // ставим хук
       await bot.telegram.setWebhook(hookUrl);
       console.log('Webhook set:', hookUrl);
     } catch (e) {
@@ -97,13 +100,13 @@ if (IS_RENDER && SERVICE_URL) {
     }
   })();
 } else {
-  // --- POLLING mode (локальная разработка) ---
+  // --- POLLING (локально) ---
   app.listen(PORT, () => console.log('HTTP on', PORT));
   (async () => {
     try {
       await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {});
       await bot.launch();
-      isPolling = true;
+      didLaunchPolling = true;
       console.log('Bot launched (polling)');
     } catch (e) {
       console.error(e);
@@ -111,12 +114,18 @@ if (IS_RENDER && SERVICE_URL) {
   })();
 }
 
-// Безопасно останавливаем только если запускали polling
-process.once('SIGINT', () => {
-  if (isPolling) bot.stop('SIGINT');
-  else process.exit(0);
-});
-process.once('SIGTERM', () => {
-  if (isPolling) bot.stop('SIGTERM');
-  else process.exit(0);
-});
+// Безопасное завершение: ОСТАНАВЛИВАЕМ ТОЛЬКО ЕСЛИ БЫЛ POLLING
+const safeExit = (signal) => {
+  try {
+    if (didLaunchPolling) {
+      bot.stop(signal);
+    }
+  } catch (_) {
+    // игнорируем "Bot is not running!"
+  } finally {
+    process.exit(0);
+  }
+};
+
+process.once('SIGINT', () => safeExit('SIGINT'));
+process.once('SIGTERM', () => safeExit('SIGTERM'));
